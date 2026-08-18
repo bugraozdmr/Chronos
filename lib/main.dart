@@ -46,7 +46,7 @@ class _ChronosAppState extends ConsumerState<ChronosApp> {
 
   ThemeData _buildLightTheme() {
     return ThemeData.light().copyWith(
-      scaffoldBackgroundColor: const Color(0xFFF8F9FA),
+      scaffoldBackgroundColor: const Color(0xFFFAFAFA),
       colorScheme: const ColorScheme.light(
         primary: Colors.black,
         secondary: Colors.black87,
@@ -54,28 +54,42 @@ class _ChronosAppState extends ConsumerState<ChronosApp> {
       ),
       textTheme: GoogleFonts.interTextTheme(ThemeData.light().textTheme),
       appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Color(0xFFFAFAFA),
         elevation: 0,
-        iconTheme: IconThemeData(color: Colors.black),
+        scrolledUnderElevation: 0,
+        iconTheme: IconThemeData(color: Colors.black87),
         titleTextStyle: TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.w600),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+        ),
       ),
     );
   }
 
   ThemeData _buildDarkTheme() {
     return ThemeData.dark().copyWith(
-      scaffoldBackgroundColor: const Color(0xFF09090B), // shadcn dark background
+      scaffoldBackgroundColor: const Color(0xFF09090B),
       colorScheme: const ColorScheme.dark(
         primary: Colors.white,
         secondary: Colors.white70,
-        surface: Color(0xFF18181B), // shadcn card dark
+        surface: Color(0xFF18181B),
       ),
       textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
       appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Color(0xFF09090B),
         elevation: 0,
+        scrolledUnderElevation: 0,
         iconTheme: IconThemeData(color: Colors.white),
         titleTextStyle: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w600),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+        ),
       ),
     );
   }

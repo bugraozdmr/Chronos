@@ -3,6 +3,8 @@ import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:toastification/toastification.dart';
 import '../../services/bluetooth_service.dart';
+import '../../utils/toast_utils.dart';
+import '../providers/theme_provider.dart';
 
 class DevicesScreen extends ConsumerStatefulWidget {
   const DevicesScreen({super.key});
@@ -33,14 +35,11 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
       setState(() {
         _isLoading = false;
       });
-      toastification.show(
+      showChronosToast(
         context: context,
-        title: const Text('Error'),
-        description: const Text('Could not load devices.'),
         type: ToastificationType.error,
-        style: ToastificationStyle.flat,
-        alignment: Alignment.topCenter,
-        autoCloseDuration: const Duration(seconds: 3),
+        title: 'Error',
+        description: 'Could not load devices.',
       );
     }
   }
@@ -54,30 +53,24 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
       builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.white)),
     );
 
-    final success = await bluetooth.connectToDevice(device);
+    final error = await bluetooth.connectToDevice(device);
     
     if (mounted) {
       Navigator.pop(context); // Remove dialog
-      if (success) {
-        toastification.show(
+      if (error == null) {
+        showChronosToast(
           context: context,
-          title: const Text('Connected'),
-          description: Text('Successfully connected to ${device.name}'),
           type: ToastificationType.success,
-          style: ToastificationStyle.flat,
-          alignment: Alignment.topCenter,
-          autoCloseDuration: const Duration(seconds: 3),
+          title: 'Connected',
+          description: 'Successfully connected to ${device.name}',
         );
         Navigator.pop(context); // Go back to Home
       } else {
-        toastification.show(
+        showChronosToast(
           context: context,
-          title: const Text('Connection Failed'),
-          description: Text('Could not connect to ${device.name}'),
           type: ToastificationType.error,
-          style: ToastificationStyle.flat,
-          alignment: Alignment.topCenter,
-          autoCloseDuration: const Duration(seconds: 4),
+          title: 'Connection Failed',
+          description: error,
         );
       }
     }
@@ -88,6 +81,20 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Paired Devices'),
+        actions: [
+          Consumer(
+            builder: (context, ref, _) {
+              final isDark = Theme.of(context).brightness == Brightness.dark;
+              return IconButton(
+                icon: Icon(isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded),
+                onPressed: () {
+                  ref.read(themeModeProvider.notifier).state =
+                      isDark ? ThemeMode.light : ThemeMode.dark;
+                },
+              );
+            },
+          ),
+        ],
       ),
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator())

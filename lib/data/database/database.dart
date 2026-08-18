@@ -53,8 +53,13 @@ class AppDatabase extends _$AppDatabase {
 
   // Queries
   Future<List<Session>> getAllSessions() => select(sessions).get();
+  Stream<List<Session>> watchAllSessions() => select(sessions).watch();
   Future<Session?> getActiveSession() => 
-      (select(sessions)..where((t) => t.status.equals('active'))).getSingleOrNull();
+      (select(sessions)..where((t) => t.status.equals('active') | t.status.equals('paused'))).getSingleOrNull();
+
+  void forceRefresh() {
+    notifyUpdates({TableUpdate('sessions')});
+  }
 
   Future<int> addSession(SessionsCompanion entry) {
     return into(sessions).insert(entry);

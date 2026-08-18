@@ -1,13 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/bluetooth_service.dart';
-import '../providers/theme_provider.dart';
 import '../providers/session_provider.dart';
 import '../widgets/empty_state_widget.dart';
 import '../widgets/active_session_widget.dart';
-import 'devices_screen.dart';
-import 'reports_screen.dart';
-import 'jobs_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -16,34 +12,9 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final activeSessionAsync = ref.watch(activeSessionStreamProvider);
     final bluetooth = ref.watch(bluetoothServiceProvider);
-    final themeMode = ref.watch(themeModeProvider);
-    final isDark = themeMode == ThemeMode.dark;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Chronos', style: TextStyle(letterSpacing: -0.5)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.bluetooth),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const DevicesScreen()),
-              );
-            },
-          ),
-          IconButton(
-            icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode),
-            onPressed: () {
-              ref.read(themeModeProvider.notifier).state = 
-                isDark ? ThemeMode.light : ThemeMode.dark;
-            },
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: SafeArea(
-        child: Padding(
+    return SafeArea(
+      child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -92,7 +63,9 @@ class HomeScreen extends ConsumerWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            bluetooth.isConnected ? 'Connected to HC-05' : 'Disconnected',
+                            bluetooth.isConnected 
+                              ? 'Connected to ${bluetooth.connectedDevice?.name ?? 'Device'}' 
+                              : 'Disconnected',
                             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
                           ),
                         ],
@@ -121,7 +94,6 @@ class HomeScreen extends ConsumerWidget {
             ],
           ),
         ),
-      ),
     );
   }
 }
