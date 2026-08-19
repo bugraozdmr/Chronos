@@ -9,15 +9,7 @@ import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:drift/drift.dart' as drift;
 import '../data/database/database.dart';
-
-@pragma('vm:entry-point')
-void notificationTapBackground(NotificationResponse response) async {
-  WidgetsFlutterBinding.ensureInitialized();
-  // Register Dart-side platform instances in this headless isolate, otherwise
-  // FlutterBackgroundServicePlatform.instance is null and invoke() throws.
-  DartPluginRegistrant.ensureInitialized();
-  FlutterBackgroundService().invoke('notificationAction', {'action': response.actionId});
-}
+import 'bluetooth_command_router.dart';
 
 Future<void> initializeBackgroundService() async {
   final service = FlutterBackgroundService();
@@ -31,19 +23,6 @@ Future<void> initializeBackgroundService() async {
 
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
-
-  // IMPORTANT: initialized in the MAIN isolate so that notification action
-  // taps are delivered here and can be forwarded to the background service.
-  await flutterLocalNotificationsPlugin.initialize(
-    settings: const InitializationSettings(
-      android: AndroidInitializationSettings('launcher_icon'),
-    ),
-    onDidReceiveNotificationResponse: (NotificationResponse response) {
-      // Foreground tap: forward to the background service isolate.
-      FlutterBackgroundService().invoke('notificationAction', {'action': response.actionId});
-    },
-    onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
-  );
 
   await flutterLocalNotificationsPlugin
       .resolvePlatformSpecificImplementation<
@@ -88,12 +67,6 @@ void onStart(ServiceInstance service) async {
   unawaited(core.init());
 
   // Background listening for UI events
-  service.on('notificationAction').listen((event) {
-    if (event != null && event['action'] != null) {
-      core.handleNotificationAction(event['action']);
-    }
-  });
-
   service.on('connectBluetooth').listen((event) {
     if (event != null && event['address'] != null) {
       core.connectBluetooth(event['address'], event['name']);
@@ -144,6 +117,9 @@ class BackgroundCore {
   DateTime? _pauseStartTime;
   int _totalPausedSeconds = 0;
 
+  // Job color used to tint the foreground notification.
+  Color? _activeColor;
+
   // The bluetooth connection is owned by THIS isolate so it survives app
   // close/reopen. The vendored plugin was patched to work without an Activity.
   BluetoothConnection? _btConnection;
@@ -152,7 +128,23 @@ class BackgroundCore {
   String _btBuffer = "";
   int _btGeneration = 0;
   
-  BackgroundCore(this.service, this.notificationsPlugin);
+  late BluetoothCommandRouter _commandRouter;
+
+  BackgroundCore(this.service, this.notificationsPlugin) {
+    _commandRouter = BluetoothCommandRouter(
+      onStartSession: startSession,
+      onStopSession: ({String? reason}) => stopSession(reason: reason),
+      onPauseSession: pauseSession,
+      onResumeSession: resumeSession,
+      onGetStatus: () async {
+        final active = await db?.getActiveSession();
+        if (active == null) return "IDLE";
+        final rawDuration = DateTime.now().difference(active.startTime);
+        final effectiveDuration = rawDuration.inSeconds - _totalPausedSeconds;
+        return "${_isPaused ? 'PAUSED' : 'ACTIVE'}|$effectiveDuration|${active.categoryName}";
+      },
+    );
+  }
 
   Future<void> init() async {
     db = AppDatabase();
@@ -162,7 +154,17 @@ class BackgroundCore {
     final activeSession = await db!.getActiveSession();
     if (activeSession != null) {
       final job = await db!.getJobByName(activeSession.categoryName);
+      _activeColor = _parseColor(job?.colorHex);
       _startTimer(activeSession.categoryName, job?.dailyLimitMinutes);
+    }
+  }
+
+  Color? _parseColor(String? hex) {
+    if (hex == null || hex.isEmpty) return null;
+    try {
+      return Color(int.parse(hex.replaceFirst('#', 'ff'), radix: 16));
+    } catch (_) {
+      return null;
     }
   }
 
@@ -179,20 +181,6 @@ class BackgroundCore {
       service.invoke('updateDuration', {'seconds': 0});
     }
     _emitBtStatus();
-  }
-
-  void handleNotificationAction(String? actionId) {
-    switch (actionId) {
-      case 'stop_session':
-        stopSession(reason: "Stopped from notification");
-        break;
-      case 'pause_session':
-        pauseSession();
-        break;
-      case 'resume_session':
-        resumeSession();
-        break;
-    }
   }
 
   // --- BLUETOOTH LOGIC (OWNED BY THIS ISOLATE SO IT SURVIVES APP CLOSE) ---
@@ -236,6 +224,7 @@ class BackgroundCore {
       }
 
       _btConnection = connection;
+      _commandRouter.setConnection(connection);
       _btDevice = BluetoothDevice(address: address, name: name);
       _btConnected = true;
       _btBuffer = "";
@@ -252,6 +241,7 @@ class BackgroundCore {
         if (generation != _btGeneration) return; // superseded connection
         _btConnected = false;
         _btConnection = null;
+        _commandRouter.setConnection(null);
         _btDevice = null;
         _emitBtStatus();
         // Session can't continue without the device link.
@@ -261,6 +251,7 @@ class BackgroundCore {
       if (generation != _btGeneration) return;
       _btConnected = false;
       _btConnection = null;
+      _commandRouter.setConnection(null);
       _btDevice = null;
       service.invoke('btConnectResult', {
         'success': false,
@@ -273,6 +264,7 @@ class BackgroundCore {
     _btGeneration++;
     _btConnection?.close();
     _btConnection = null;
+    _commandRouter.setConnection(null);
     _btDevice = null;
     _btConnected = false;
     _emitBtStatus();
@@ -295,19 +287,7 @@ class BackgroundCore {
   }
 
   void _handleIncomingMessage(String message) {
-    final parts = message.split('|');
-    if (parts.isEmpty) return;
-
-    final command = parts[0].toUpperCase();
-    if (command == 'START' && parts.length >= 2) {
-      startSession(parts[1]);
-    } else if (command == 'STOP') {
-      stopSession(reason: "Stopped from device");
-    } else if (command == 'PAUSE') {
-      pauseSession();
-    } else if (command == 'RESUME') {
-      resumeSession();
-    }
+    _commandRouter.routeCommand(message);
   }
 
   void _emitBtStatus() {
@@ -346,6 +326,7 @@ class BackgroundCore {
     );
     
     await db!.addSession(entry);
+    _activeColor = _parseColor(job?.colorHex);
     _startTimer(categoryName, job?.dailyLimitMinutes);
     service.invoke('sessionChanged');
   }
@@ -371,7 +352,7 @@ class BackgroundCore {
     
     syncStateToUI();
     service.invoke('sessionChanged');
-    _updateNotification('⏸ Paused', 'Session paused. Tap CONTINUE to resume.', true);
+    _updateNotification('⏸ Paused', 'Session paused');
   }
 
   void resumeSession() async {
@@ -386,6 +367,7 @@ class BackgroundCore {
     if (active != null) {
       await db!.updateSession(active.copyWith(status: 'active'));
       var job = await db!.getJobByName(active.categoryName);
+      _activeColor = _parseColor(job?.colorHex);
       _startTimer(active.categoryName, job?.dailyLimitMinutes);
     }
     
@@ -452,28 +434,18 @@ class BackgroundCore {
       service.invoke('updateDuration', {'seconds': effectiveDuration.inSeconds});
 
       final timeStr = '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-      _updateNotification('▶ $categoryName', timeStr, false);
+      _updateNotification('▶ $categoryName', timeStr);
       
       if (limitMinutes != null && limitMinutes > 0) {
         if (effectiveDuration.inMinutes >= limitMinutes) {
           // Buzzer logic removed, handled in UI isolate if needed.
-          // Note: Since bluetooth is in UI, the background can't directly send bluetooth messages.
+          // Note: Background can now directly send messages via _commandRouter!
         }
       }
     });
   }
 
-  void _updateNotification(String title, String body, bool isPaused) {
-    final actions = isPaused
-        ? const [
-            AndroidNotificationAction('resume_session', '▶ CONTINUE', cancelNotification: false, showsUserInterface: false),
-            AndroidNotificationAction('stop_session', '⏹ STOP', cancelNotification: false, showsUserInterface: false),
-          ]
-        : const [
-            AndroidNotificationAction('pause_session', '⏸ PAUSE', cancelNotification: false, showsUserInterface: false),
-            AndroidNotificationAction('stop_session', '⏹ STOP', cancelNotification: false, showsUserInterface: false),
-          ];
-
+  void _updateNotification(String title, String body) {
     notificationsPlugin.show(
       id: 888,
       title: title,
@@ -487,7 +459,7 @@ class BackgroundCore {
           autoCancel: false,
           importance: Importance.low,
           priority: Priority.low,
-          actions: actions,
+          color: _activeColor,
         ),
       ),
     );
