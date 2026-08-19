@@ -15,6 +15,7 @@
 // Button Pins
 #define BTN1_PIN A1
 #define BTN2_PIN A2
+#define BTN3_PIN A3
 
 // Buzzer
 #define BUZZER_PIN 2

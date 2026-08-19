@@ -30,10 +30,9 @@ void bluetoothUpdate() {
     incomingData.trim(); // \r ve gereksiz boşlukları temizle
     
     if (incomingData.length() > 0) {
-      // Gelen veriyi LCD'de göster
-      displayMessage(incomingData);
-      
-      // Gelen veriyi komut yönlendiriciye ilet
+      // Gelen veriyi doğrudan komut yönlendiriciye ilet.
+      // Ekrana doğrudan raw veriyi basmak (displayMessage) SPI iletişiminden dolayı 
+      // 50ms sürer ve SoftwareSerial buffer'ını taşırıp verileri bozabilir!
       processCommand(incomingData);
     }
   }
