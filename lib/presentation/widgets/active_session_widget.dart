@@ -180,12 +180,38 @@ class _ActiveSessionWidgetState extends ConsumerState<ActiveSessionWidget> {
           ],
         ),
 
+        if (widget.session.notes != null && widget.session.notes!.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.notes_rounded, color: isDark ? Colors.white54 : Colors.black45, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    widget.session.notes!,
+                    style: TextStyle(
+                      color: isDark ? Colors.white70 : Colors.black87,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+
         const SizedBox(height: 16),
 
         TextButton.icon(
           onPressed: () => _showNoteDialog(context, widget.session),
-          icon: const Icon(Icons.note_add),
-          label: const Text('Add Note'),
+          icon: Icon((widget.session.notes != null && widget.session.notes!.isNotEmpty) ? Icons.edit_note : Icons.note_add),
+          label: Text((widget.session.notes != null && widget.session.notes!.isNotEmpty) ? 'Edit Note' : 'Add Note'),
           style: TextButton.styleFrom(
             foregroundColor: Theme.of(context).colorScheme.primary,
           ),
@@ -285,8 +311,11 @@ class _ActiveSessionWidgetState extends ConsumerState<ActiveSessionWidget> {
                         height: 48,
                         child: FilledButton(
                           onPressed: () {
+                            final note = controller.text.trim();
                             Navigator.pop(ctx);
-                            // TODO: save note to DB
+                            if (note.isNotEmpty) {
+                              ref.read(sessionManagerProvider).saveActiveNote(note);
+                            }
                           },
                           style: FilledButton.styleFrom(
                             shape: RoundedRectangleBorder(

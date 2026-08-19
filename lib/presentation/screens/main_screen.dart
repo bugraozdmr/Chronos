@@ -89,6 +89,13 @@ class MainScreen extends ConsumerWidget {
               );
             }),
           ],
+          // Add Job button — only visible on Jobs tab
+          if (currentIndex == 1)
+            IconButton(
+              icon: const Icon(Icons.add_rounded, size: 28),
+              tooltip: 'Add Job',
+              onPressed: () => showJobSheet(context, ref),
+            ),
           // Bluetooth — only visible on Focus tab when NOT connected
           if (currentIndex == 0 && !ref.watch(bluetoothServiceProvider).isConnected)
             IconButton(
@@ -170,20 +177,6 @@ class MainScreen extends ConsumerWidget {
               ),
             ),
           ),
-
-          // Floating Add Job Button (only on Jobs tab)
-          if (currentIndex == 1)
-            Positioned(
-              right: 24,
-              bottom: 104, // 24 (nav padding) + 64 (nav height) + 16 (gap)
-              child: FloatingActionButton(
-                onPressed: () => showJobSheet(context, ref),
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                elevation: 4,
-                child: const Icon(Icons.add_rounded, size: 28),
-              ),
-            ),
         ],
       ),
     );

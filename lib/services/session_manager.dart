@@ -69,6 +69,10 @@ class SessionManager {
     FlutterBackgroundService().invoke('resumeSession');
   }
 
+  void saveActiveNote(String note) {
+    FlutterBackgroundService().invoke('saveNote', {'note': note});
+  }
+
   Future<void> stopActiveSession({String? reason}) async {
     FlutterBackgroundService().invoke('stopSession');
   }

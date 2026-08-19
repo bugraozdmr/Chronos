@@ -38,6 +38,16 @@ class ReportsScreen extends ConsumerWidget {
     }).toList();
   }
 
+  // Format a duration in seconds as e.g. "1h 5m 12s", "20m 15s", "45s"
+  String _formatDuration(int totalSeconds) {
+    final h = totalSeconds ~/ 3600;
+    final m = (totalSeconds % 3600) ~/ 60;
+    final s = totalSeconds % 60;
+    if (h > 0) return '${h}h ${m}m ${s}s';
+    if (m > 0) return '${m}m ${s}s';
+    return '${s}s';
+  }
+
   // Parse hex color
   Color _hexToColor(String? hexString, Color fallback) {
     if (hexString == null || hexString.isEmpty) return fallback;
@@ -88,9 +98,7 @@ class ReportsScreen extends ConsumerWidget {
                   }
 
                   // Format total time
-                  final hours = totalSeconds ~/ 3600;
-                  final minutes = (totalSeconds % 3600) ~/ 60;
-                  final totalTimeStr = hours > 0 ? '${hours}h ${minutes}m' : '${minutes}m';
+                  final totalTimeStr = _formatDuration(totalSeconds);
 
                   // Get top category
                   String topCategory = categoryDurations.keys.first;
@@ -216,7 +224,7 @@ class ReportsScreen extends ConsumerWidget {
                               itemBuilder: (context, index) {
                                 final key = categoryDurations.keys.elementAt(index);
                                 final val = categoryDurations[key]!;
-                                final mins = (val / 60).toStringAsFixed(0);
+                                final durStr = _formatDuration(val);
                                 
                                 return jobsAsync.when(
                                   data: (jobs) {
@@ -237,7 +245,7 @@ class ReportsScreen extends ConsumerWidget {
                                         ),
                                       ),
                                       title: Text(key, style: const TextStyle(fontWeight: FontWeight.w500)),
-                                      trailing: Text('$mins min', style: const TextStyle(fontWeight: FontWeight.w600)),
+                                      trailing: Text(durStr, style: const TextStyle(fontWeight: FontWeight.w600)),
                                     );
                                   },
                                   loading: () => const SizedBox(),
@@ -400,10 +408,7 @@ class ReportsScreen extends ConsumerWidget {
           itemBuilder: (context, index) {
             final session = sorted[index];
             final duration = session.durationSeconds ?? 0;
-            final mins = duration ~/ 60;
-            final h = mins ~/ 60;
-            final m = mins % 60;
-            final durationStr = h > 0 ? '${h}h ${m}m' : '${m}m';
+            final durationStr = _formatDuration(duration);
 
             return jobsAsync.when(
               data: (jobs) {
@@ -421,6 +426,7 @@ class ReportsScreen extends ConsumerWidget {
                     border: Border.all(color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
                   ),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Container(
                         width: 4,
@@ -444,23 +450,22 @@ class ReportsScreen extends ConsumerWidget {
                                 color: isDark ? Colors.white54 : Colors.black54,
                               ),
                             ),
-                            if (session.notes != null && session.notes!.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                session.notes!,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontStyle: FontStyle.italic,
-                                  color: isDark ? Colors.white54 : Colors.black54,
-                                ),
-                              ),
-                            ],
                           ],
                         ),
                       ),
-                      Text(
-                        durationStr,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (session.notes != null && session.notes!.isNotEmpty) ...[
+                            _NoteIconButton(note: session.notes!),
+                            const SizedBox(height: 6),
+                          ],
+                          Text(
+                            durationStr,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -472,6 +477,137 @@ class ReportsScreen extends ConsumerWidget {
           },
         ),
       ],
+    );
+  }
+}
+
+class _NoteIconButton extends StatefulWidget {
+  final String note;
+
+  const _NoteIconButton({required this.note});
+
+  @override
+  State<_NoteIconButton> createState() => _NoteIconButtonState();
+}
+
+class _NoteIconButtonState extends State<_NoteIconButton> {
+  final GlobalKey _btnKey = GlobalKey();
+  OverlayEntry? _entry;
+  bool _isOpen = false;
+
+  @override
+  void dispose() {
+    _close();
+    super.dispose();
+  }
+
+  void _close() {
+    if (_isOpen) {
+      _entry?.remove();
+      _entry = null;
+      _isOpen = false;
+    }
+  }
+
+  void _toggleNote() {
+    if (_isOpen) {
+      _close();
+      return;
+    }
+
+    final box = _btnKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final anchor = box.localToGlobal(Offset.zero) & box.size;
+    _entry = _showNotePopover(anchor, widget.note);
+    _isOpen = true;
+  }
+
+  OverlayEntry _showNotePopover(Rect anchor, String note) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final overlay = Overlay.of(context);
+    final screenSize = MediaQuery.of(context).size;
+    const popWidth = 240.0;
+    final left = (anchor.right - popWidth).clamp(12.0, screenSize.width - popWidth - 12.0).toDouble();
+    final top = anchor.bottom + 8.0;
+
+    final entry = OverlayEntry(
+      builder: (ctx) => Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: _close,
+            ),
+          ),
+          Positioned(
+            left: left,
+            top: top,
+            child: AbsorbPointer(
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: popWidth,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1F1F24) : Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.08),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Session Note',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white54 : Colors.black54,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(note, style: const TextStyle(fontSize: 13, height: 1.4)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    overlay.insert(entry);
+    return entry;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: _toggleNote,
+      child: Container(
+        key: _btnKey,
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.05),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          Icons.info_outline,
+          size: 14,
+          color: isDark ? Colors.white54 : Colors.black54,
+        ),
+      ),
     );
   }
 }

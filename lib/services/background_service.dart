@@ -1,14 +1,21 @@
 import 'dart:async';
 import 'dart:ui';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:drift/drift.dart' as drift;
 import '../data/database/database.dart';
 
 @pragma('vm:entry-point')
 void notificationTapBackground(NotificationResponse response) async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Register Dart-side platform instances in this headless isolate, otherwise
+  // FlutterBackgroundServicePlatform.instance is null and invoke() throws.
+  DartPluginRegistrant.ensureInitialized();
   FlutterBackgroundService().invoke('notificationAction', {'action': response.actionId});
 }
 
@@ -24,6 +31,19 @@ Future<void> initializeBackgroundService() async {
 
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
+
+  // IMPORTANT: initialized in the MAIN isolate so that notification action
+  // taps are delivered here and can be forwarded to the background service.
+  await flutterLocalNotificationsPlugin.initialize(
+    settings: const InitializationSettings(
+      android: AndroidInitializationSettings('launcher_icon'),
+    ),
+    onDidReceiveNotificationResponse: (NotificationResponse response) {
+      // Foreground tap: forward to the background service isolate.
+      FlutterBackgroundService().invoke('notificationAction', {'action': response.actionId});
+    },
+    onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
+  );
 
   await flutterLocalNotificationsPlugin
       .resolvePlatformSpecificImplementation<
@@ -63,22 +83,30 @@ void onStart(ServiceInstance service) async {
 
   // We instantiate a local core logic handler to keep state
   final core = BackgroundCore(service, flutterLocalNotificationsPlugin);
-  await core.init();
-
-  await flutterLocalNotificationsPlugin.initialize(
-    settings: const InitializationSettings(
-      android: AndroidInitializationSettings('launcher_icon'),
-    ),
-    onDidReceiveNotificationResponse: (NotificationResponse response) {
-      core.handleNotificationAction(response.actionId);
-    },
-    onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
-  );
+  // Not awaited: bluetooth auto-connect must not block registering the event
+  // listeners below (a slow device would otherwise eat UI commands).
+  unawaited(core.init());
 
   // Background listening for UI events
   service.on('notificationAction').listen((event) {
     if (event != null && event['action'] != null) {
       core.handleNotificationAction(event['action']);
+    }
+  });
+
+  service.on('connectBluetooth').listen((event) {
+    if (event != null && event['address'] != null) {
+      core.connectBluetooth(event['address'], event['name']);
+    }
+  });
+
+  service.on('disconnectBluetooth').listen((event) {
+    core.disconnectBluetooth();
+  });
+
+  service.on('saveNote').listen((event) {
+    if (event != null && event['note'] != null) {
+      core.saveNote(event['note']);
     }
   });
 
@@ -115,12 +143,20 @@ class BackgroundCore {
   bool _isPaused = false;
   DateTime? _pauseStartTime;
   int _totalPausedSeconds = 0;
+
+  // The bluetooth connection is owned by THIS isolate so it survives app
+  // close/reopen. The vendored plugin was patched to work without an Activity.
+  BluetoothConnection? _btConnection;
+  BluetoothDevice? _btDevice;
+  bool _btConnected = false;
+  String _btBuffer = "";
+  int _btGeneration = 0;
   
   BackgroundCore(this.service, this.notificationsPlugin);
 
   Future<void> init() async {
     db = AppDatabase();
-    // Auto-connect and Bluetooth logic handled in UI isolate
+    await _autoConnect();
     
     // Resume active session if exists
     final activeSession = await db!.getActiveSession();
@@ -142,6 +178,7 @@ class BackgroundCore {
     } else {
       service.invoke('updateDuration', {'seconds': 0});
     }
+    _emitBtStatus();
   }
 
   void handleNotificationAction(String? actionId) {
@@ -158,7 +195,128 @@ class BackgroundCore {
     }
   }
 
-  // --- BLUETOOTH LOGIC (MOVED TO UI ISOLATE, PLUGIN REQUIRES AN ACTIVITY) ---
+  // --- BLUETOOTH LOGIC (OWNED BY THIS ISOLATE SO IT SURVIVES APP CLOSE) ---
+
+  Future<void> _autoConnect() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastMac = prefs.getString('last_bt_mac');
+      final lastName = prefs.getString('last_bt_name');
+      if (lastMac != null) {
+        await connectBluetooth(lastMac, lastName);
+      }
+    } catch (e) {
+      // Auto-connect must never break service startup.
+    }
+  }
+
+  Future<void> connectBluetooth(String address, String? name) async {
+    final generation = ++_btGeneration;
+    try {
+      // Already connected to this device — just report current state.
+      if (_btConnected && _btDevice?.address == address) {
+        service.invoke('btConnectResult', {'success': true, 'name': name, 'address': address});
+        _emitBtStatus();
+        return;
+      }
+
+      // Release any stale connection to a previous device first.
+      final previous = _btConnection;
+      _btConnection = null;
+      _btConnected = false;
+      _btDevice = null;
+      previous?.close();
+
+      final connection = await BluetoothConnection.toAddress(address);
+
+      // A newer request superseded this one — drop it silently.
+      if (generation != _btGeneration) {
+        connection.close();
+        return;
+      }
+
+      _btConnection = connection;
+      _btDevice = BluetoothDevice(address: address, name: name);
+      _btConnected = true;
+      _btBuffer = "";
+
+      SharedPreferences.getInstance().then((prefs) {
+        prefs.setString('last_bt_mac', address);
+        if (name != null) prefs.setString('last_bt_name', name);
+      });
+
+      service.invoke('btConnectResult', {'success': true, 'name': name, 'address': address});
+      _emitBtStatus();
+
+      connection.input!.listen(_onDataReceived).onDone(() {
+        if (generation != _btGeneration) return; // superseded connection
+        _btConnected = false;
+        _btConnection = null;
+        _btDevice = null;
+        _emitBtStatus();
+        // Session can't continue without the device link.
+        stopSession(reason: "Bluetooth disconnected");
+      });
+    } catch (e) {
+      if (generation != _btGeneration) return;
+      _btConnected = false;
+      _btConnection = null;
+      _btDevice = null;
+      service.invoke('btConnectResult', {
+        'success': false,
+        'message': e.toString(),
+      });
+    }
+  }
+
+  void disconnectBluetooth() {
+    _btGeneration++;
+    _btConnection?.close();
+    _btConnection = null;
+    _btDevice = null;
+    _btConnected = false;
+    _emitBtStatus();
+  }
+
+  void _onDataReceived(Uint8List data) {
+    String dataString = utf8.decode(data, allowMalformed: true);
+    _btBuffer += dataString;
+
+    int newlineIndex = _btBuffer.indexOf('\n');
+    while (newlineIndex >= 0) {
+      String message = _btBuffer.substring(0, newlineIndex).trim();
+      _btBuffer = _btBuffer.substring(newlineIndex + 1);
+
+      if (message.isNotEmpty) {
+        _handleIncomingMessage(message);
+      }
+      newlineIndex = _btBuffer.indexOf('\n');
+    }
+  }
+
+  void _handleIncomingMessage(String message) {
+    final parts = message.split('|');
+    if (parts.isEmpty) return;
+
+    final command = parts[0].toUpperCase();
+    if (command == 'START' && parts.length >= 2) {
+      startSession(parts[1]);
+    } else if (command == 'STOP') {
+      stopSession(reason: "Stopped from device");
+    } else if (command == 'PAUSE') {
+      pauseSession();
+    } else if (command == 'RESUME') {
+      resumeSession();
+    }
+  }
+
+  void _emitBtStatus() {
+    service.invoke('btStatus', {
+      'connected': _btConnected,
+      'name': _btDevice?.name,
+      'address': _btDevice?.address,
+    });
+  }
 
   // --- SESSION LOGIC ---
 
@@ -190,6 +348,14 @@ class BackgroundCore {
     await db!.addSession(entry);
     _startTimer(categoryName, job?.dailyLimitMinutes);
     service.invoke('sessionChanged');
+  }
+
+  Future<void> saveNote(String note) async {
+    final active = await db!.getActiveSession();
+    if (active != null) {
+      await db!.updateSession(active.copyWith(notes: drift.Value<String?>(note)));
+      service.invoke('sessionChanged');
+    }
   }
 
   void pauseSession() async {

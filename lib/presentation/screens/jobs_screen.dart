@@ -20,6 +20,7 @@ void showJobSheet(BuildContext context, WidgetRef ref, [Job? job]) {
     '#eab308', // Yellow
     '#14b8a6', // Teal
   ];
+  late String selectedColorHex = job?.colorHex ?? defaultColors[0];
 
   showModalBottomSheet(
     context: context,
@@ -30,9 +31,6 @@ void showJobSheet(BuildContext context, WidgetRef ref, [Job? job]) {
       
       return StatefulBuilder(
         builder: (BuildContext context, StateSetter setState) {
-          // Initialize selected color once
-          String selectedColorHex = job?.colorHex ?? defaultColors[0];
-
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
             child: Container(
@@ -354,6 +352,7 @@ class JobsScreen extends ConsumerWidget {
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, index) {
             final job = jobs[index];
+            final jobColor = Color(int.parse(job.colorHex.replaceFirst('#', 'ff'), radix: 16));
             return Container(
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF18181B) : Colors.white,
@@ -368,12 +367,12 @@ class JobsScreen extends ConsumerWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04),
+                    color: jobColor.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
                     Icons.work_outline_rounded,
-                    color: isDark ? Colors.white70 : Colors.black54,
+                    color: jobColor,
                     size: 22,
                   ),
                 ),
