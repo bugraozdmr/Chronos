@@ -1,12 +1,8 @@
 import 'dart:async';
 import 'dart:ui';
-import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:drift/drift.dart' as drift;
 import '../data/database/database.dart';
 
@@ -86,8 +82,6 @@ void onStart(ServiceInstance service) async {
     }
   });
 
-    // Bluetooth logic removed from here, handled in UI isolate
-
   service.on('startSession').listen((event) {
     if (event != null && event['categoryName'] != null) {
       core.startSession(event['categoryName']);
@@ -105,8 +99,6 @@ void onStart(ServiceInstance service) async {
   service.on('resumeSession').listen((event) {
     core.resumeSession();
   });
-
-    // Send message logic removed from here, handled in UI isolate
 
   service.on('syncState').listen((event) {
     core.syncStateToUI();
@@ -166,7 +158,7 @@ class BackgroundCore {
     }
   }
 
-  // --- BLUETOOTH LOGIC (MOVED TO UI ISOLATE) ---
+  // --- BLUETOOTH LOGIC (MOVED TO UI ISOLATE, PLUGIN REQUIRES AN ACTIVITY) ---
 
   // --- SESSION LOGIC ---
 
@@ -182,7 +174,7 @@ class BackgroundCore {
     
     var job = await db!.getJobByName(categoryName);
     if (job == null) {
-      final id = await db!.into(db!.jobs).insert(JobsCompanion(
+      await db!.into(db!.jobs).insert(JobsCompanion(
         name: drift.Value(categoryName),
       ));
       job = await db!.getJobByName(categoryName);
@@ -268,6 +260,7 @@ class BackgroundCore {
       );
       
       await db!.updateSession(updated);
+      service.invoke('sessionChanged');
     }
     _totalPausedSeconds = 0;
   }
