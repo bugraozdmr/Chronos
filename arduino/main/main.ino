@@ -26,8 +26,54 @@ bool firstTime = true;
 unsigned long lastJobRequestTime = 0;
 const unsigned long JOB_REQUEST_INTERVAL = 60000; // 60 saniye (1 dakika)
 
+bool isAsleep = false;
+unsigned long lastActivityTime = 0;
+const unsigned long SLEEP_TIMEOUT = 300000; // 5 mins
+
+void wakeUp() {
+  if (!isAsleep)
+    return;
+  isAsleep = false;
+  lastActivityTime = millis();
+  displayMessage(F("Waking up..."));
+  if (isBluetoothConnected()) {
+    bluetoothSendMessage("GET_JOBS");
+  }
+}
+
+void goToSleep() {
+  if (isAsleep)
+    return;
+  isAsleep = true;
+  displayClear(); // lcd is private to display.cpp, so we use displayClear()
+  digitalWrite(LED_RED, LOW);
+  digitalWrite(LED_GREEN, LOW);
+}
+
 void loop() {
   bluetoothUpdate();
+
+  if (isAsleep) {
+    if (digitalRead(BTN1_PIN) == LOW || digitalRead(BTN2_PIN) == LOW ||
+        digitalRead(BTN3_PIN) == LOW) {
+      wakeUp();
+      delay(300); // Debounce for wake up
+    }
+    return; // Uyku modundayken loop'un geri kalanını çalıştırma
+  }
+
+  // Herhangi bir butona basıldığında aktivite süresini güncelle
+  if (digitalRead(BTN1_PIN) == LOW || digitalRead(BTN2_PIN) == LOW ||
+      digitalRead(BTN3_PIN) == LOW) {
+    lastActivityTime = millis();
+  }
+
+  // Uyku moduna geçiş kontrolü
+  if (millis() - lastActivityTime > SLEEP_TIMEOUT && !isSessionMode) {
+    goToSleep();
+    return;
+  }
+
   sensorUpdate();
 
   // Bluetooth state -> LED + LCD
@@ -47,7 +93,8 @@ void loop() {
     firstTime = false;
   }
 
-  // Bluetooth bağlı olduğu sürece dakikada bir job listesini güncelle (Sadece menüdeyken)
+  // Bluetooth bağlı olduğu sürece dakikada bir job listesini güncelle (Sadece
+  // menüdeyken)
   if (btState && isMenuMode) {
     if (millis() - lastJobRequestTime >= JOB_REQUEST_INTERVAL) {
       lastJobRequestTime = millis();
@@ -86,6 +133,7 @@ void loop() {
   static unsigned long btn3LastReleaseTime = 0;
   static bool btn3Pressed = false;
   static bool btn3LongHandled = false;
+  static bool btn3WaitingForDouble = false;
 
   bool currentBtn3State = digitalRead(BTN3_PIN);
   if (currentBtn3State == LOW) { // Basılı tutuluyor
@@ -107,32 +155,37 @@ void loop() {
     if (btn3Pressed) {
       // Kısa basma kontrolü (Debounce için en az 50ms basılmış olmalı)
       if (!btn3LongHandled && (millis() - btn3PressStart > 50)) {
-        // Çift tıklama kontrolü (Örn: ard arda 400ms içinde iki kez basılırsa)
-        if (millis() - btn3LastReleaseTime < 400) {
-          // Easter Egg: Mipmap Göster! (displayWaitingBluetooth ekranı temizleyip resmi basıyor)
-          displayWaitingBluetooth();
+        if (btn3WaitingForDouble) {
+          // Çift tıklama başarılı!
+          btn3WaitingForDouble = false;
+          displayWaitingBluetooth(); // Mipmap göster
           delay(2000);
-          btn3LastReleaseTime = 0; // Sıfırla
-          
-          // Ekrana geri dön
-          if (btState) { // Menu için state
-            isMenuMode = true; 
+
+          if (isBluetoothConnected()) {
+            isMenuMode = true;
             displayMessage(F("Refreshing..."));
             bluetoothSendMessage("GET_JOBS");
           }
         } else {
-          // İlk tıklama - işlevi yerine getir (Oturum başlat vb.)
-          if (isMenuMode) {
-            String selectedJob = displayMenuGetSelected();
-            if (selectedJob != "") {
-              displayMessage(F("Starting..."));
-              bluetoothSendMessage("START|" + selectedJob);
-            }
-          }
+          // İlk tıklama kaydedildi, ikinciyi bekle
+          btn3WaitingForDouble = true;
           btn3LastReleaseTime = millis();
         }
       }
       btn3Pressed = false;
+    }
+  }
+
+  // Çift tıklama süresi dolduysa ve ikinci tıklama gelmediyse tek tıklama
+  // işlemini yap
+  if (btn3WaitingForDouble && (millis() - btn3LastReleaseTime > 300)) {
+    btn3WaitingForDouble = false;
+    if (isMenuMode) {
+      String selectedJob = displayMenuGetSelected();
+      if (selectedJob != "") {
+        displayMessage(F("Starting..."));
+        bluetoothSendMessage("START|" + selectedJob);
+      }
     }
   }
 }
