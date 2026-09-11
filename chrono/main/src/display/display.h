@@ -7,7 +7,12 @@ void displayInit();
 void displayClear();
 void displayMessage(const char* message);
 void displayMessage(String message);
+void displayMessage(const __FlashStringHelper* message);
 void displayData(char data);
+
+// Bluetooth Waiting Screen with Pokemon Pixel Art
+void displayWaitingBluetooth();
+void displayDrawBitmapImage();
 
 // Menu Functions
 void displayMenuSetItems(String items[], int count);

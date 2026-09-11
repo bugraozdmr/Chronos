@@ -8,6 +8,10 @@
 #define LCD_RST 6
 #define LCD_CE  7
 
+// Nokia 5110 LCD Contrast (50-62 arasi idealdir, silikse arttirin, koyuysa azaltin)
+#define LCD_CONTRAST 58
+
+
 // LED Pins
 #define LED_RED 9
 #define LED_GREEN 10

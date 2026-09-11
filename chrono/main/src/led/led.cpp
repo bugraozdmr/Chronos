@@ -6,14 +6,14 @@ void ledInit() {
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_GREEN, OUTPUT);
   
-  // Hardware test: RED 2s, then GREEN 2s
+  // Hardware test: RED 200ms, then GREEN 200ms
   digitalWrite(LED_RED, HIGH);
   digitalWrite(LED_GREEN, LOW);
-  delay(2000);
+  delay(200);
   
   digitalWrite(LED_RED, LOW);
   digitalWrite(LED_GREEN, HIGH);
-  delay(2000);
+  delay(200);
   
   digitalWrite(LED_RED, LOW);
   digitalWrite(LED_GREEN, LOW);

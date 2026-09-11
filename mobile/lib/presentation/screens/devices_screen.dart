@@ -3,8 +3,9 @@ import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:toastification/toastification.dart';
 import '../../services/bluetooth_service.dart';
-import '../../utils/toast_utils.dart';
+import '../../core/utils/toast_utils.dart';
 import '../providers/theme_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class DevicesScreen extends ConsumerStatefulWidget {
   const DevicesScreen({super.key});
@@ -24,6 +25,24 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
   }
 
   Future<void> _loadDevices() async {
+    final statusConnect = await Permission.bluetoothConnect.request();
+    final statusScan = await Permission.bluetoothScan.request();
+
+    if (statusConnect.isDenied || statusConnect.isPermanentlyDenied) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        showChronosToast(
+          context: context,
+          type: ChronosToastType.warning,
+          title: 'Permission Required',
+          description: 'Bluetooth permissions are required to scan for devices.',
+        );
+      }
+      return;
+    }
+
     final bluetooth = ref.read(bluetoothServiceProvider);
     try {
       final devices = await bluetooth.getBondedDevices();
@@ -37,7 +56,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
       });
       showChronosToast(
         context: context,
-        type: ToastificationType.error,
+        type: ChronosToastType.error,
         title: 'Error',
         description: 'Could not load devices.',
       );
@@ -60,7 +79,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
       if (error == null) {
         showChronosToast(
           context: context,
-          type: ToastificationType.success,
+          type: ChronosToastType.success,
           title: 'Connected',
           description: 'Successfully connected to ${device.name}',
         );
@@ -68,7 +87,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
       } else {
         showChronosToast(
           context: context,
-          type: ToastificationType.error,
+          type: ChronosToastType.error,
           title: 'Connection Failed',
           description: error,
         );

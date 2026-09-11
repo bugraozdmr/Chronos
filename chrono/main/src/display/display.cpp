@@ -22,35 +22,44 @@ bool isMenuMode = false;
 bool isSessionMode = false;
 String currentSessionStatus = "IDLE";
 
+// Quotes stored in Flash (PROGMEM) to save SRAM
+const char quote_0[] PROGMEM = "Stay hungry,\nstay foolish.";
+const char quote_1[] PROGMEM = "Knowledge is\npower.";
+const char quote_2[] PROGMEM = "Never give up.";
+const char quote_3[] PROGMEM = "I think,\ntherefore\nI am.";
+const char quote_4[] PROGMEM = "Carpe diem.";
+const char quote_5[] PROGMEM = "Veni, vidi,\nvici.";
+const char quote_6[] PROGMEM = "Time is money.";
+const char quote_7[] PROGMEM = "To be, or\nnot to be.";
+const char quote_8[] PROGMEM = "Make it\nhappen.";
+
+const char* const quotes[] PROGMEM = {
+  quote_0, quote_1, quote_2, quote_3, quote_4,
+  quote_5, quote_6, quote_7, quote_8
+};
+
+#include "display_image.h"
+
 void displayInit() {
   lcd.begin();
-  lcd.setContrast(57);
+  lcd.setContrast(LCD_CONTRAST);
   
   displayClear();
 
   lcd.setTextSize(1);
   lcd.setTextColor(BLACK);
 
-  // Random startup quote
+  // Random startup quote from PROGMEM
   randomSeed(analogRead(A0));
-  
-  const char* quotes[] = {
-    "Stay hungry,\nstay foolish.",
-    "Knowledge is\npower.",
-    "Never give up.",
-    "I think,\ntherefore\nI am.",
-    "Carpe diem.",
-    "Veni, vidi,\nvici.",
-    "Time is money.",
-    "To be, or\nnot to be.",
-    "Make it\nhappen."
-  };
   
   int numQuotes = sizeof(quotes) / sizeof(quotes[0]);
   int randomIndex = random(0, numQuotes);
 
+  char quoteBuf[32];
+  strcpy_P(quoteBuf, (char*)pgm_read_word(&(quotes[randomIndex])));
+
   lcd.setCursor(0, 0);
-  lcd.println(quotes[randomIndex]);
+  lcd.println(quoteBuf);
 
   lcd.display();
 }
@@ -73,8 +82,41 @@ void displayMessage(const char* message) {
   lcd.display();
 }
 
+void displayMessage(const __FlashStringHelper* message) {
+  isMenuMode = false;
+  isSessionMode = false;
+  lcd.clearDisplay();
+  lcd.setTextSize(1);
+  lcd.setTextColor(BLACK);
+  lcd.setCursor(0, 0);
+  lcd.println(message);
+  lcd.display();
+}
+
 void displayMessage(String message) {
   displayMessage(message.c_str());
+}
+
+void displayDrawBitmapImage() {
+  for (int y = 0; y < DISPLAY_IMAGE_HEIGHT; y++) {
+    for (int x = 0; x < DISPLAY_IMAGE_WIDTH; x++) {
+      uint8_t b = pgm_read_byte(&display_image[x + (y / 8) * DISPLAY_IMAGE_WIDTH]);
+      if (b & (1 << (y % 8))) {
+        lcd.drawPixel(x, y, BLACK);
+      }
+    }
+  }
+}
+
+void displayWaitingBluetooth() {
+  isMenuMode = false;
+  isSessionMode = false;
+  lcd.clearDisplay();
+  
+  // Draw user's bitmap from display_image.h
+  displayDrawBitmapImage();
+  
+  lcd.display();
 }
 
 void displayData(char data) {

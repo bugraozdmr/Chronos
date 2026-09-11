@@ -36,12 +36,12 @@ void loop() {
   
   if (btState != lastBtState || firstTime) {
     if (btState) {
-      displayMessage("System Ready");
+      displayMessage(F("System Ready"));
       // Bağlantı kurulduğunda hemen job listesini iste
       bluetoothSendMessage("GET_JOBS");
       lastJobRequestTime = millis();
     } else {
-      displayMessage("Waiting BT");
+      displayWaitingBluetooth();
     }
     lastBtState = btState;
     firstTime = false;
@@ -94,7 +94,7 @@ void loop() {
       // Uzun basma kontrolü (Örn: 800ms)
       if (!btn3LongHandled && (millis() - btn3PressStart > 800)) {
         if (isMenuMode) {
-          displayMessage("Refreshing...");
+          displayMessage(F("Refreshing..."));
           bluetoothSendMessage("GET_JOBS");
         }
         btn3LongHandled = true; // Sadece bir kere tetiklenmesi için
@@ -107,7 +107,7 @@ void loop() {
         if (isMenuMode) {
           String selectedJob = displayMenuGetSelected();
           if (selectedJob != "") {
-            displayMessage("Starting...");
+            displayMessage(F("Starting..."));
             bluetoothSendMessage("START|" + selectedJob);
           }
         } else if (isSessionMode) {

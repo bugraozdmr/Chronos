@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:toastification/toastification.dart';
-import '../../utils/toast_utils.dart';
+
+import '../../core/utils/toast_utils.dart';
 import '../providers/job_provider.dart';
 import '../../services/session_manager.dart';
 import '../../services/bluetooth_service.dart';
@@ -152,7 +152,7 @@ class EmptyStateWidget extends ConsumerWidget {
               if (!bluetooth.isConnected) {
                 showChronosToast(
                   context: context,
-                  type: ToastificationType.warning,
+                  type: ChronosToastType.warning,
                   title: 'Bluetooth Required',
                   description: 'Please connect to your HC-05 device first.',
                 );

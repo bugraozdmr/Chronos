@@ -7,10 +7,15 @@ import 'presentation/screens/splash_screen.dart';
 import 'services/session_manager.dart';
 import 'services/background_service.dart';
 import 'presentation/providers/theme_provider.dart';
+import 'presentation/widgets/custom_error_widget.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // Set custom error widget
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return CustomErrorWidget(errorMessage: details.exceptionAsString());
+  };
   // Lock orientation to portrait
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,

@@ -1,0 +1,57 @@
+multimetre harika cihaz
+
+sıkıntı var mı anlamak için aslında toprak ile ayaklara dokundur doğru akım şuan ardunio vs. ölçersin
+
+bip sesi modunda eğer bip varsa ayaklar ayna uca bağlı gibi sıkıntı yok demek elektrik var demek burda.
+
+ötmüyorsa sıkıntı
+
+
+lcd5110 o dış metal kısım çıkmış onun minnak oturtma yeri var tırnakla ittim o şekil geldi ekran
+
+
+siyah kablo ortaya girer
+kırmızı en sağa ohm işareti vs. var ölçücü zaten o anlarsın
+
+
+direnç çok büyükse yanmaz ledler
+
+prb modunda ledler yanarsa çalışıyorlardır demektir.
+
+
+bluetooth state bacağı olmadan led yakamazsın çünkü durum takibi yapamazsın
+
+ayrıca o dirençli yapı https://lastminuteengineers.com/hc05-bluetooth-arduino-tutorial/
+
+Olur 👍 Hatta iki tane 2kΩ gayet uygun.
+
+Şöyle:
+
+Arduino D11 (TX)
+      │
+     2kΩ
+      │
+      ├──────── HC-05 RXD
+      │
+     2kΩ
+      │
+     GND
+
+İki eşit direnç olduğu için Arduino'nun 5V çıkışını yaklaşık 2.5V'a düşürür.
+
+Ama HC-05 RX için genellikle 3.3V civarı daha uygun olduğundan, 1k + 2k daha iyi bir bölücüdür:
+
+Arduino TX → 1kΩ → HC-05 RXD
+                    │
+                   2kΩ
+                    │
+                   GND
+
+Bu yaklaşık 3.33V verir.
+
+direkt 0 1 kullanmaman daha iyi ?? :D ancak dirençler kullanman grekir
+
+direnç bölücü kurarsın
+
+
+Eğer üzerinde + ve - yoksa, uzun bacak genellikle +, kısa bacak - olur.

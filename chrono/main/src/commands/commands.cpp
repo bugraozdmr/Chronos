@@ -10,23 +10,23 @@ void commandsInit() {
 void processCommand(String command) {
   // Gelen komutu işle
   if (command == "TEST") {
-    displayMessage("TEST BASARILI");
+    displayMessage(F("TEST BASARILI"));
     bluetoothSendMessage("ACK:TEST_OK");
   } 
   else if (command.startsWith("START|")) {
-    displayMessage("SURE BASLADI");
+    displayMessage(F("SURE BASLADI"));
     bluetoothSendMessage("ACK:START_OK");
   }
   else if (command == "STOP") {
-    displayMessage("SURE DURDU");
+    displayMessage(F("SURE DURDU"));
     bluetoothSendMessage("ACK:STOP_OK");
   }
   else if (command == "PAUSE") {
-    displayMessage("DURAKLATILDI");
+    displayMessage(F("DURAKLATILDI"));
     bluetoothSendMessage("ACK:PAUSE_OK");
   }
   else if (command == "RESUME") {
-    displayMessage("DEVAM EDIYOR");
+    displayMessage(F("DEVAM EDIYOR"));
     bluetoothSendMessage("ACK:RESUME_OK");
   }
   else if (command.startsWith("STATUS:")) {
@@ -73,7 +73,7 @@ void processCommand(String command) {
     if (jobCount > 0) {
       displayMenuSetItems(parsedJobs, jobCount);
     } else {
-      displayMessage("No Jobs");
+      displayMessage(F("No Jobs"));
     }
   }
 }
