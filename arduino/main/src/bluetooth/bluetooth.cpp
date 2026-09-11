@@ -9,6 +9,7 @@ SoftwareSerial btSerial(BT_RX_PIN, BT_TX_PIN);
 
 void bluetoothInit() {
   btSerial.begin(BT_BAUD_RATE);
+  btSerial.setTimeout(50); // Prevent 1000ms blocking if \n is dropped
   pinMode(BT_STATE_PIN, INPUT);
 }
 

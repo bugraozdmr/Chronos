@@ -2,6 +2,7 @@
 #include "commands.h"
 #include "../display/display.h"
 #include "../bluetooth/bluetooth.h"
+#include "../buzzer/buzzer.h"
 
 void commandsInit() {
   // Komut modülü başlatma işlemleri
@@ -28,6 +29,9 @@ void processCommand(String command) {
   else if (command == "RESUME") {
     displayMessage(F("DEVAM EDIYOR"));
     bluetoothSendMessage("ACK:RESUME_OK");
+  }
+  else if (command == "BUZZER:BEEP") {
+    buzzerBeep();
   }
   else if (command.startsWith("STATUS:")) {
     String payload = command.substring(7);

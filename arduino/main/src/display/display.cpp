@@ -229,15 +229,18 @@ void displaySessionView(String jobName, int elapsedSeconds, String status) {
   int s = elapsedSeconds % 60;
   
   char timeStr[10];
-  if (h > 0) {
-    sprintf(timeStr, "%02d:%02d:%02d", h, m, s);
+  if (h >= 10) {
+    sprintf(timeStr, "%d:%02d", h, m); // e.g. "12:35" (5 chars)
+  } else if (h > 0) {
+    sprintf(timeStr, "%d:%02d:%02d", h, m, s); // e.g. "1:05:30" (7 chars = 84px, fits exactly)
   } else {
-    sprintf(timeStr, "%02d:%02d", m, s);
+    sprintf(timeStr, "%02d:%02d", m, s); // e.g. "45:30" (5 chars)
   }
   
   // Center large text (approx: size 2 -> 12px width per char)
-  int timeLen = (h > 0) ? 8 : 5;
+  int timeLen = strlen(timeStr);
   int timeX = (84 - (timeLen * 12)) / 2;
+  if (timeX < 0) timeX = 0;
   
   lcd.setTextSize(2);
   lcd.setCursor(timeX, 14);

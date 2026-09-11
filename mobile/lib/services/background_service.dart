@@ -338,6 +338,10 @@ class BackgroundCore {
     
     final statusData = await _commandRouter.onGetStatus();
     _commandRouter.pushStatus(statusData);
+
+    // Start chronometer notification
+    final when = DateTime.now().millisecondsSinceEpoch;
+    _updateNotification('▶ $categoryName', 'Session active', usesChronometer: true, when: when);
   }
 
   Future<void> saveNote(String note) async {
@@ -361,7 +365,17 @@ class BackgroundCore {
     
     syncStateToUI();
     service.invoke('sessionChanged');
-    _updateNotification('⏸ Paused', 'Session paused');
+    
+    // Pause notification (shows frozen time, no chronometer)
+    final active2 = await db!.getActiveSession();
+    if (active2 != null) {
+      final effectiveDuration = DateTime.now().difference(active2.startTime) - Duration(seconds: _totalPausedSeconds);
+      final hours = effectiveDuration.inHours;
+      final minutes = effectiveDuration.inMinutes.remainder(60);
+      final seconds = effectiveDuration.inSeconds.remainder(60);
+      final timeStr = '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+      _updateNotification('⏸ Paused', timeStr, usesChronometer: false);
+    }
     
     final statusData = await _commandRouter.onGetStatus();
     _commandRouter.pushStatus(statusData);
@@ -388,6 +402,14 @@ class BackgroundCore {
     
     final statusData = await _commandRouter.onGetStatus();
     _commandRouter.pushStatus(statusData);
+
+    // Resume chronometer notification
+    final active2 = await db!.getActiveSession();
+    if (active2 != null) {
+      final effectiveDuration = DateTime.now().difference(active2.startTime).inMilliseconds - (_totalPausedSeconds * 1000);
+      final when = DateTime.now().millisecondsSinceEpoch - effectiveDuration;
+      _updateNotification('▶ ${active2.categoryName}', 'Session active', usesChronometer: true, when: when);
+    }
   }
 
   Future<void> stopSession({String? reason}) async {
@@ -402,28 +424,33 @@ class BackgroundCore {
     service.invoke('sessionStatus', {'isPaused': false});
     service.invoke('updateDuration', {'seconds': 0});
     
-    // Clear notification
-    notificationsPlugin.cancel(id: 888);
+    // Clear notification without cancelling the foreground service
+    _activeColor = null;
+    _updateNotification('Chronos', 'Ready for a new task', usesChronometer: false);
     
-    final active = await db!.getActiveSession();
-    if (active != null) {
-      final now = DateTime.now();
-      final effectiveDuration = now.difference(active.startTime).inSeconds - _totalPausedSeconds;
-      
-      var notes = active.notes;
-      if (reason != null) {
-        notes = (notes != null && notes.isNotEmpty) ? '$notes\nStopped due to: $reason' : 'Stopped due to: $reason';
+    try {
+      final active = await db!.getActiveSession();
+      if (active != null) {
+        final now = DateTime.now();
+        final effectiveDuration = now.difference(active.startTime).inSeconds - _totalPausedSeconds;
+        
+        var notes = active.notes;
+        if (reason != null) {
+          notes = (notes != null && notes.isNotEmpty) ? '$notes\nStopped due to: $reason' : 'Stopped due to: $reason';
+        }
+        
+        final updated = active.copyWith(
+          endTime: drift.Value(now),
+          durationSeconds: drift.Value(effectiveDuration),
+          status: 'completed',
+          notes: drift.Value(notes),
+        );
+        
+        await db!.updateSession(updated);
+        service.invoke('sessionChanged');
       }
-      
-      final updated = active.copyWith(
-        endTime: drift.Value(now),
-        durationSeconds: drift.Value(effectiveDuration),
-        status: 'completed',
-        notes: drift.Value(notes),
-      );
-      
-      await db!.updateSession(updated);
-      service.invoke('sessionChanged');
+    } catch (e) {
+      debugPrint("Error saving session: $e");
     }
     _totalPausedSeconds = 0;
     _commandRouter.pushStatus("IDLE");
@@ -443,28 +470,22 @@ class BackgroundCore {
       final rawDuration = DateTime.now().difference(active.startTime);
       final effectiveDuration = rawDuration - Duration(seconds: _totalPausedSeconds);
       
-      final hours = effectiveDuration.inHours;
-      final minutes = effectiveDuration.inMinutes.remainder(60);
-      final seconds = effectiveDuration.inSeconds.remainder(60);
-      
       service.invoke('updateDuration', {'seconds': effectiveDuration.inSeconds});
-
-      final timeStr = '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-      _updateNotification('▶ $categoryName', timeStr);
       
       final statusData = await _commandRouter.onGetStatus();
       _commandRouter.pushStatus(statusData);
 
       if (limitMinutes != null && limitMinutes > 0) {
         if (effectiveDuration.inMinutes >= limitMinutes) {
-          // Buzzer logic removed, handled in UI isolate if needed.
-          // Note: Background can now directly send messages via _commandRouter!
+          if (effectiveDuration.inSeconds % 10 == 0) {
+            _commandRouter.sendResponse("BUZZER:BEEP");
+          }
         }
       }
     });
   }
 
-  void _updateNotification(String title, String body) {
+  void _updateNotification(String title, String body, {bool usesChronometer = false, int? when}) {
     notificationsPlugin.show(
       id: 888,
       title: title,
@@ -479,6 +500,9 @@ class BackgroundCore {
           importance: Importance.low,
           priority: Priority.low,
           color: _activeColor,
+          usesChronometer: usesChronometer,
+          when: when,
+          showWhen: usesChronometer,
         ),
       ),
     );

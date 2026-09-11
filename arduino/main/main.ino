@@ -1,10 +1,10 @@
+#include "src/bluetooth/bluetooth.h"
+#include "src/buzzer/buzzer.h"
+#include "src/commands/commands.h"
 #include "src/config/config.h"
 #include "src/display/display.h"
-#include "src/bluetooth/bluetooth.h"
-#include "src/commands/commands.h"
-#include "src/sensor/sensor.h"
-#include "src/buzzer/buzzer.h"
 #include "src/led/led.h"
+#include "src/sensor/sensor.h"
 #include "src/utils/utils.h"
 
 void setup() {
@@ -29,11 +29,11 @@ const unsigned long JOB_REQUEST_INTERVAL = 60000; // 60 saniye (1 dakika)
 void loop() {
   bluetoothUpdate();
   sensorUpdate();
-  
+
   // Bluetooth state -> LED + LCD
   bool btState = isBluetoothConnected();
   ledSetConnectionState(btState);
-  
+
   if (btState != lastBtState || firstTime) {
     if (btState) {
       displayMessage(F("System Ready"));
@@ -47,8 +47,8 @@ void loop() {
     firstTime = false;
   }
 
-  // Bluetooth bağlı olduğu sürece dakikada bir job listesini güncelle
-  if (btState) {
+  // Bluetooth bağlı olduğu sürece dakikada bir job listesini güncelle (Sadece menüdeyken)
+  if (btState && isMenuMode) {
     if (millis() - lastJobRequestTime >= JOB_REQUEST_INTERVAL) {
       lastJobRequestTime = millis();
       bluetoothSendMessage("GET_JOBS");
@@ -59,7 +59,7 @@ void loop() {
   static unsigned long lastBtn1Time = 0;
   static unsigned long lastBtn2Time = 0;
   static unsigned long lastBtn3Time = 0;
-  
+
   if (digitalRead(BTN1_PIN) == LOW && millis() - lastBtn1Time > 200) {
     if (isMenuMode) {
       displayMenuScrollUp();
@@ -75,15 +75,18 @@ void loop() {
   if (digitalRead(BTN2_PIN) == LOW && millis() - lastBtn2Time > 200) {
     if (isMenuMode) {
       displayMenuScrollDown();
+    } else if (isSessionMode) {
+      bluetoothSendMessage("STOP");
     }
     lastBtn2Time = millis();
   }
-  
-  // BTN3 Long Press / Short Press Logic
+
+  // BTN3 Long Press / Short Press / Double Click Logic
   static unsigned long btn3PressStart = 0;
+  static unsigned long btn3LastReleaseTime = 0;
   static bool btn3Pressed = false;
   static bool btn3LongHandled = false;
-  
+
   bool currentBtn3State = digitalRead(BTN3_PIN);
   if (currentBtn3State == LOW) { // Basılı tutuluyor
     if (!btn3Pressed) {
@@ -104,14 +107,29 @@ void loop() {
     if (btn3Pressed) {
       // Kısa basma kontrolü (Debounce için en az 50ms basılmış olmalı)
       if (!btn3LongHandled && (millis() - btn3PressStart > 50)) {
-        if (isMenuMode) {
-          String selectedJob = displayMenuGetSelected();
-          if (selectedJob != "") {
-            displayMessage(F("Starting..."));
-            bluetoothSendMessage("START|" + selectedJob);
+        // Çift tıklama kontrolü (Örn: ard arda 400ms içinde iki kez basılırsa)
+        if (millis() - btn3LastReleaseTime < 400) {
+          // Easter Egg: Mipmap Göster! (displayWaitingBluetooth ekranı temizleyip resmi basıyor)
+          displayWaitingBluetooth();
+          delay(2000);
+          btn3LastReleaseTime = 0; // Sıfırla
+          
+          // Ekrana geri dön
+          if (btState) { // Menu için state
+            isMenuMode = true; 
+            displayMessage(F("Refreshing..."));
+            bluetoothSendMessage("GET_JOBS");
           }
-        } else if (isSessionMode) {
-          bluetoothSendMessage("STOP");
+        } else {
+          // İlk tıklama - işlevi yerine getir (Oturum başlat vb.)
+          if (isMenuMode) {
+            String selectedJob = displayMenuGetSelected();
+            if (selectedJob != "") {
+              displayMessage(F("Starting..."));
+              bluetoothSendMessage("START|" + selectedJob);
+            }
+          }
+          btn3LastReleaseTime = millis();
         }
       }
       btn3Pressed = false;
